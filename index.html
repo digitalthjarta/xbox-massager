@@ -9,11 +9,11 @@
         body {
             margin: 0;
             padding: 0;
-            background-color: #1E1E1E;
+            background-color: #645C56;
             /* Xbox dark background */
             display: flex;
             justify-content: center;
-            align-items: center;
+            align-items: flex-start;
             min-height: 100vh;
             font-family: "Segoe UI", "Helvetica Neue", sans-serif;
         }
@@ -26,7 +26,6 @@
         }
 
         #message {
-            font-size: 1.2em;
             margin-bottom: 20px;
         }
 
@@ -47,7 +46,7 @@
 
         button {
             width: 200px;
-            aspect-ratio: 1;
+            aspect-ratio: 1.5;
             background-color: #107C10;
             /* Xbox green */
             color: white;
@@ -108,12 +107,28 @@
                 box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
             }
         }
+
+        #header {
+            margin-bottom: 20px;
+        }
+
+        #header img {
+            max-width: 100%;
+            height: auto;
+        }
     </style>
 </head>
 
 <body>
     <div id="container">
-        <div id="message">Please connect an Xbox controller and press any button on it.</div>
+        <div id="header"><img src="sad-dude.png" alt="Illustration of person with neck pain." /></div>
+
+        <div id="intro">
+            <p>I know, I know. You've been working hard all day. Your neck hurts and noone's there to massage it. Fear
+                not, the Xbox Massager is here to help.</p>
+        </div>
+
+        <div id="message">Connect a Xbox controller and press any button to activate it.</div>
         <div id="controls">
             <div id="pattern-buttons">
                 <button id="slowWave">Slow Wave</button>
