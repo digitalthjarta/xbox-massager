@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Xbox Controller Vibration Control</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1E1E1E;
+            /* Xbox dark background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+        }
+
+        #container {
+            max-width: 640px;
+            width: 100%;
+            text-align: center;
+            color: white;
+        }
+
+        #message {
+            font-size: 1.2em;
+            margin-bottom: 20px;
+        }
+
+        /* Hide controls by default */
+        #controls {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        #pattern-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        button {
+            width: 200px;
+            aspect-ratio: 1;
+            background-color: #107C10;
+            /* Xbox green */
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1em;
+            cursor: pointer;
+        }
+
+        button#slowWave {
+            background-color: #107C10;
+            /* Xbox green */
+        }
+
+        button#intensePulse {
+            background-color: #00A4EF;
+            /* Xbox blue */
+        }
+
+        button#eleven {
+            background-color: #68217A;
+            /* Xbox purple */
+        }
+
+        button#stop {
+            background-color: #E81123;
+            /* Xbox red */
+            width: calc(600px + 40px);
+            /* 3 buttons * 120px + 2 gaps * 20px */
+            max-width: 100%;
+            height: 60px;
+            aspect-ratio: unset;
+            display: none;
+            /* Hide by default */
+        }
+
+        button.selected {
+            outline: 2px solid white;
+        }
+
+        button.playing {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7);
+            }
+
+            70% {
+                transform: scale(1.05);
+                box-shadow: 0 0 20px 10px rgba(255, 255, 255, 0);
+            }
+
+            100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="container">
+        <div id="message">Please connect an Xbox controller and press any button on it.</div>
+        <div id="controls">
+            <div id="pattern-buttons">
+                <button id="slowWave">Slow Wave</button>
+                <button id="intensePulse">Intense Pulsating</button>
+                <button id="eleven">This Goes To 11</button>
+            </div>
+            <button id="stop">Stop</button>
+        </div>
+    </div>
+
+    <script>
+        let xboxGamepad = null;
+        let vibrationInterval = null;
+        let lastTimestamp = 0;
+        let selectedButtonIndex = 0;
+        const buttons = ["slowWave", "intensePulse", "eleven"];
+        let previousButtonStates = [];
+        let currentPattern = null;
+
+        function isXboxController(gamepad) {
+            // Xbox controllers often contain "Xbox" or "XInput" in their ID strings.
+            // You may want to console.log(gamepad.id) to see actual strings for your device.
+            return gamepad && /Xbox|XInput/i.test(gamepad.id);
+        }
+
+        function updateGamepads() {
+            const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+            for (let gp of gamepads) {
+                if (gp && gp.connected && isXboxController(gp)) {
+                    xboxGamepad = gp;
+                    showControls();
+                    break;
+                }
+            }
+        }
+
+        window.addEventListener("gamepadconnected", (e) => {
+            if (isXboxController(e.gamepad)) {
+                xboxGamepad = e.gamepad;
+                showControls();
+                requestAnimationFrame(handleGamepadInput);
+            }
+        });
+
+        window.addEventListener("gamepaddisconnected", (e) => {
+            if (xboxGamepad && e.gamepad.index === xboxGamepad.index) {
+                xboxGamepad = null;
+                stopVibrationPattern();
+                hideControls();
+            }
+        });
+
+        // Check if user pressed any button on the controller
+        function checkForButtonPress() {
+            updateGamepads();
+            if (xboxGamepad && xboxGamepad.buttons.some(btn => btn.pressed)) {
+                showControls();
+                requestAnimationFrame(handleGamepadInput);
+            } else {
+                requestAnimationFrame(checkForButtonPress);
+            }
+        }
+
+        function showControls() {
+            document.getElementById("message").textContent = "Use Left and Right buttons to select vibration and A to start it. Press Y to stop vibrating.";
+            document.getElementById("controls").style.display = "flex";
+        }
+
+        function hideControls() {
+            document.getElementById("controls").style.display = "none";
+            document.getElementById("message").textContent = "Please connect an Xbox controller and press any button on it.";
+        }
+
+        // Make sure we are continuously checking for user pressing any button after connection
+        requestAnimationFrame(checkForButtonPress);
+
+        // Utility: Play a single haptic effect on the controller
+        function playVibration(duration, strongMagnitude = 0, weakMagnitude = 0) {
+            if (xboxGamepad && xboxGamepad.vibrationActuator) {
+                xboxGamepad.vibrationActuator.playEffect("dual-rumble", {
+                    duration: duration,
+                    strongMagnitude: strongMagnitude,
+                    weakMagnitude: weakMagnitude
+                });
+            }
+        }
+
+        function stopVibrationPattern() {
+            if (vibrationInterval) {
+                clearInterval(vibrationInterval);
+                vibrationInterval = null;
+            }
+            currentPattern = null;
+            // Stop vibration by sending zero intensity
+            playVibration(100, 0, 0);
+            hideStopButton();
+            updateSelectedButton();
+        }
+
+        // Slow Wave: 5 seconds total cycle. We'll update intensity every 100ms.
+        // Using a sine wave: intensity = (sin(2*pi*t/5000)*0.5)+0.5
+        function startSlowWave() {
+            if (currentPattern === 'slowWave') {
+                stopVibrationPattern();
+                return;
+            }
+            stopVibrationPattern();
+            currentPattern = 'slowWave';
+            let startTime = performance.now();
+            vibrationInterval = setInterval(() => {
+                const now = performance.now();
+                const elapsed = now - startTime;
+                const period = 5000; // 5 seconds
+                const t = (elapsed % period) / period;
+                const intensity = Math.round(((Math.sin(2 * Math.PI * t) * 0.5) + 0.5) * 1000) / 1000;
+                playVibration(100, intensity, intensity);
+            }, 50);
+            showStopButton();
+            updateSelectedButton();
+        }
+
+        // Intense Pulsating: 1s cycle
+        // For example: 200ms max intensity, 800ms low intensity
+        function startIntensePulse() {
+            if (currentPattern === 'intensePulse') {
+                stopVibrationPattern();
+                return;
+            }
+            stopVibrationPattern();
+            currentPattern = 'intensePulse';
+            vibrationInterval = setInterval(() => {
+                const now = new Date().getTime();
+                const cycleTime = 1000;
+                const t = (now % cycleTime) / cycleTime;
+                // Ease in and out using a sine wave
+                const intensity = Math.round(Math.sin(t * Math.PI) * 1000) / 1000;
+                playVibration(100, intensity, intensity);
+            }, 50);
+            showStopButton();
+            updateSelectedButton();
+        }
+
+        // This Goes to 11: Steady max intensity until stopped.
+        function startEleven() {
+            if (currentPattern === 'eleven') {
+                stopVibrationPattern();
+                return;
+            }
+            stopVibrationPattern();
+            currentPattern = 'eleven';
+            // Just continuously keep calling max intensity every second to maintain it
+            vibrationInterval = setInterval(() => {
+                playVibration(1000, 1.0, 1.0);
+            }, 500);
+            showStopButton();
+            updateSelectedButton();
+        }
+
+        function updateSelectedButton() {
+            buttons.forEach((id, index) => {
+                const button = document.getElementById(id);
+                if (index === selectedButtonIndex) {
+                    button.classList.add("selected");
+                } else {
+                    button.classList.remove("selected");
+                }
+                if (currentPattern === id) {
+                    button.classList.add("playing");
+                } else {
+                    button.classList.remove("playing");
+                }
+            });
+        }
+
+        // Update the Stop button label
+        document.getElementById("stop").textContent = "Press Y to Stop";
+
+        function handleGamepadInput() {
+            const gamepads = navigator.getGamepads();
+            if (gamepads[0]) {
+                const gp = gamepads[0];
+
+                // Initialize previousButtonStates if not already done
+                if (!previousButtonStates[gp.index]) {
+                    previousButtonStates[gp.index] = gp.buttons.map(btn => btn.pressed);
+                }
+
+                // Check for button presses
+                if (gp.buttons[14].pressed && !previousButtonStates[gp.index][14]) { // Left button
+                    selectedButtonIndex = (selectedButtonIndex - 1 + buttons.length) % buttons.length;
+                    updateSelectedButton();
+                }
+                if (gp.buttons[15].pressed && !previousButtonStates[gp.index][15]) { // Right button
+                    selectedButtonIndex = (selectedButtonIndex + 1) % buttons.length;
+                    updateSelectedButton();
+                }
+                if (gp.buttons[0].pressed && !previousButtonStates[gp.index][0]) { // A button
+                    document.getElementById(buttons[selectedButtonIndex]).click();
+                }
+                if (gp.buttons[3].pressed && !previousButtonStates[gp.index][3]) { // Y button
+                    stopVibrationPattern();
+                }
+
+                // Update previousButtonStates
+                previousButtonStates[gp.index] = gp.buttons.map(btn => btn.pressed);
+            }
+            requestAnimationFrame(handleGamepadInput);
+        }
+
+        function showStopButton() {
+            document.getElementById("stop").style.display = "block";
+        }
+
+        function hideStopButton() {
+            document.getElementById("stop").style.display = "none";
+        }
+
+        document.getElementById("slowWave").addEventListener("click", startSlowWave);
+        document.getElementById("intensePulse").addEventListener("click", startIntensePulse);
+        document.getElementById("eleven").addEventListener("click", startEleven);
+        document.getElementById("stop").addEventListener("click", stopVibrationPattern);
+
+        updateSelectedButton();
+    </script>
+</body>
+
+</html>
